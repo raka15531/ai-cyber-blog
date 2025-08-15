@@ -1,0 +1,57 @@
+name: AI Draft Generator
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9:00 AM UTC
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama pull llama3 &
+          sleep 60
+
+      - name: Restore vector_db (memory)
+        run: |
+          if [ -f "vector_db.b64" ]; then
+            base64 -d vector_db.b64 | tar -xz
+            echo "✅ Restored AI memory"
+          else
+            echo "🆕 Starting fresh"
+          fi
+
+      - name: Run AI draft generator
+        run: python main.py
+
+      - name: Save drafts and memory
+        run: |
+          # Save new/updated drafts and memory
+          tar -czf vector_db_new.tar.gz vector_db/
+          base64 vector_db_new.tar.gz > vector_db.b64
+          git config user.name "AI Bot"
+          git config user.email "bot@example.com"
+          git add drafts/ vector_db.b64 published.json
+          git commit -m "🤖 New AI draft + updated memory" || echo "No changes to commit"
+          git push
+
+      - name: Cleanup
+        run: |
+          rm -rf vector_db/ vector_db_new.tar.gz vector_db.b64
