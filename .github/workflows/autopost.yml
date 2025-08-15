@@ -56,6 +56,8 @@ jobs:
       - name: Save drafts and memory
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           # Ensure drafts folder exists
           mkdir -p drafts
@@ -73,8 +75,8 @@ jobs:
           git config user.name "AI Blog Bot"
           git config user.email "ai-bot@users.noreply.github.com"
 
-          # Re-add authentication for push
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          # Authenticate remote using token
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git
 
           # Stage changes
           git add drafts/ vector_db.b64 published.json 2>/dev/null || echo "No files to stage"
@@ -83,7 +85,7 @@ jobs:
           if ! git diff-index --quiet HEAD --; then
             git commit -m "🤖 AI-generated draft and updated memory [$(date)]"
             echo "📤 Pushing changes to GitHub..."
-            git push origin HEAD:${GITHUB_REF_NAME}
+            git push origin HEAD:${BRANCH}
           else
             echo "🟢 No changes detected. Nothing to commit."
           fi
