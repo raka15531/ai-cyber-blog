@@ -8,11 +8,15 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 👉 Required to allow git push to repo
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0  # 👉 Required for git push
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -23,19 +27,37 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Start Ollama
+      - name: Install and Start Ollama
         run: |
+          # Download and install Ollama
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama pull llama3 &
-          sleep 60
 
-      - name: Restore vector_db (memory)
+          # Start Ollama in background
+          nohup ollama serve > ollama.log 2>&1 &
+          
+          # Wait for server to start
+          sleep 20
+
+          # Pull llama3 model
+          echo "📥 Pulling llama3 model (may take 2-5 mins)..."
+          ollama pull llama3
+
+          # Confirm model is available
+          ollama list | grep -q llama3
+          if [ $? -eq 0 ]; then
+            echo "✅ llama3 model ready"
+          else
+            echo "❌ Failed to download llama3"
+            exit 1
+          fi
+
+      - name: Restore vector_db (AI memory)
         run: |
           if [ -f "vector_db.b64" ]; then
             base64 -d vector_db.b64 | tar -xz
-            echo "✅ Restored AI memory"
+            echo "✅ Restored AI memory from vector_db"
           else
-            echo "🆕 Starting fresh"
+            echo "🆕 No previous memory found. Starting fresh."
           fi
 
       - name: Run AI draft generator
@@ -43,15 +65,32 @@ jobs:
 
       - name: Save drafts and memory
         run: |
-          # Save new/updated drafts and memory
-          tar -czf vector_db_new.tar.gz vector_db/
-          base64 vector_db_new.tar.gz > vector_db.b64
-          git config user.name "AI Bot"
-          git config user.email "bot@example.com"
-          git add drafts/ vector_db.b64 published.json
-          git commit -m "🤖 New AI draft + updated memory" || echo "No changes to commit"
-          git push
+          # Rebuild vector_db archive
+          if [ -d "vector_db" ]; then
+            tar -czf vector_db.tar.gz vector_db/
+            base64 vector_db.tar.gz > vector_db.b64
+            echo "✅ vector_db.b64 updated"
+          else
+            echo "⚠️ No vector_db to save"
+          fi
+
+          # Configure Git
+          git config user.name "AI Blog Bot"
+          git config user.email "ai-bot@users.noreply.github.com"
+
+          # Add only if files changed
+          git add drafts/ vector_db.b64 published.json 2>/dev/null || echo "No files to stage"
+
+          # Commit only if there are changes
+          if ! git diff-index --quiet HEAD --; then
+            git commit -m "🤖 AI-generated draft and updated memory [$(date)]"
+            echo "📤 Pushing changes to GitHub..."
+            git push
+          else
+            echo "🟢 No changes detected. Nothing to commit."
+          fi
 
       - name: Cleanup
         run: |
-          rm -rf vector_db/ vector_db_new.tar.gz vector_db.b64
+          rm -rf vector_db/ vector_db.tar.gz vector_db.b64 ollama.log
+          echo "🧹 Temporary files cleaned up"
