@@ -9,14 +9,14 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Allows git push
+      contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 0  # Required for push
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,15 +24,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Install and Start Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           nohup ollama serve > ollama.log 2>&1 &
           sleep 20
-          echo "📥 Pulling llama3 model (may take 2–5 mins)..."
+          echo "📥 Pulling llama3 model..."
           ollama pull llama3
           if ollama list | grep -q llama3; then
             echo "✅ llama3 model ready"
@@ -47,7 +46,7 @@ jobs:
             base64 -d vector_db.b64 | tar -xz
             echo "✅ Restored AI memory from vector_db"
           else
-            echo "🆕 No previous memory found. Starting fresh."
+            echo "🆕 No previous memory found."
           fi
 
       - name: Run AI draft generator
@@ -57,40 +56,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          BRANCH: ${{ github.ref_name }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          # Ensure drafts folder exists
           mkdir -p drafts
 
-          # Rebuild vector_db archive
           if [ -d "vector_db" ]; then
             tar -czf vector_db.tar.gz vector_db/
             base64 vector_db.tar.gz > vector_db.b64
             echo "✅ vector_db.b64 updated"
-          else
-            echo "⚠️ No vector_db to save"
           fi
 
           # Configure Git identity
-          git config user.name "AI Draft Generator"
-          git config user.email "ai-draft-generator@users.noreply.github.com"
+          git config --global user.name "AI Draft Generator"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Authenticate remote using token
+          # Auth with token
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git
 
           # Stage changes
-          git add drafts/ vector_db.b64 published.json 2>/dev/null || echo "No files to stage"
+          git add drafts/ vector_db.b64 published.json 2>/dev/null || true
 
-          # Commit and push only if changes exist
           if ! git diff-index --quiet HEAD --; then
             git commit -m "🤖 AI-generated draft and updated memory [$(date)]"
-            echo "📤 Pushing changes to GitHub..."
             git push origin HEAD:${BRANCH}
           else
-            echo "🟢 No changes detected. Nothing to commit."
+            echo "🟢 No changes to commit."
           fi
 
       - name: Cleanup
-        run: |
-          rm -rf vector_db/ vector_db.tar.gz vector_db.b64 ollama.log
-          echo "🧹 Temporary files cleaned up"
+        run: rm -rf vector_db/ vector_db.tar.gz vector_db.b64 ollama.log
