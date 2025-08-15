@@ -1,9 +1,9 @@
-name: AI Draft Generator
+name: Auto Draft Blog Posts
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 9 * * 1'  # Every Monday at 9:00 AM UTC
+    - cron: "0 */6 * * *"
 
 jobs:
   generate:
@@ -15,42 +15,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          persist-credentials: false
           fetch-depth: 0
+          persist-credentials: false  # We'll set our own credentials later
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Install and Start Ollama
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          nohup ollama serve > ollama.log 2>&1 &
-          sleep 20
-          echo "📥 Pulling llama3 model..."
-          ollama pull llama3
-          if ollama list | grep -q llama3; then
-            echo "✅ llama3 model ready"
-          else
-            echo "❌ Failed to download llama3"
-            exit 1
-          fi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Restore vector_db (AI memory)
+      - name: Generate blog post
         run: |
-          if [ -f "vector_db.b64" ]; then
-            base64 -d vector_db.b64 | tar -xz
-            echo "✅ Restored AI memory from vector_db"
-          else
-            echo "🆕 No previous memory found."
-          fi
-
-      - name: Run AI draft generator
-        run: python main.py
+          python scripts/generate_post.py
 
       - name: Save drafts and memory
         env:
@@ -66,14 +46,12 @@ jobs:
             echo "✅ vector_db.b64 updated"
           fi
 
-          # Configure Git identity
           git config --global user.name "AI Draft Generator"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Auth with token
+          # ✅ Securely authenticate to GitHub
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git
 
-          # Stage changes
           git add drafts/ vector_db.b64 published.json 2>/dev/null || true
 
           if ! git diff-index --quiet HEAD --; then
@@ -82,6 +60,3 @@ jobs:
           else
             echo "🟢 No changes to commit."
           fi
-
-      - name: Cleanup
-        run: rm -rf vector_db/ vector_db.tar.gz vector_db.b64 ollama.log
