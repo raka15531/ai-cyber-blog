@@ -34,7 +34,7 @@ jobs:
 
       - name: Save drafts and memory
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}   # ✅ Now using your personal access token
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
@@ -49,7 +49,7 @@ jobs:
           git config --global user.name "AI Draft Generator"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # ✅ Securely authenticate to GitHub
+          # ✅ Securely authenticate to GitHub using GH_PAT
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git
 
           git add drafts/ vector_db.b64 published.json 2>/dev/null || true
